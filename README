@@ -21,6 +21,40 @@ cd ibp_server
 ./bootstrap
 make
 
+Adding resources
+-------------------------------------------------------------------------------
+Each drive this server will use needs to be mounted and added to the server
+configuration to be used. In order to do that:
+
+./mkfs.resource <IBP id (unique)> dir <path to drive> <path to drive DB> <maximum size in MB>
+
+Where:
+    IBP id needs to be unique per server
+    path to drive is the absolute path to the storage
+    path to drive DB is the absolute path to the directory storing the resource DB
+        -- This can be on a separate disk, possibly SSD
+    If the maximum size is omitted, the default is to have no limit
+
+Will provide the on-disk files needed. The output from mkfs.resource should then
+be copy/pasted into the /etc/ibp.cfg to inform IBP of the additional resources
+available after restart.
+
+Starting the service
+-------------------------------------------------------------------------------
+An init script is provided and will be installed as "ibp_server"
+
+Monitoring the service
+-------------------------------------------------------------------------------
+To verify the IBP server is operating and accepting connections, one can use
+
+get_version -a
+
+or
+
+get_version <host> <port>
+
+If the server is active, it will dump the current status, otherwise there will
+be an error.
 
 IBP configuration options
 -------------------------------------------------------------------------------
