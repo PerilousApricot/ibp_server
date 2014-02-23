@@ -25,7 +25,7 @@ Advanced Computing Center for Research and Education
 230 Appleton Place
 Nashville, TN 37203
 http://www.accre.vanderbilt.edu
-*/ 
+*/
 
 #include <unistd.h>
 #include <string.h>
@@ -62,8 +62,8 @@ void *parallel_mount_resource(apr_thread_t *th, void *data) {
 
    assert((r = (Resource_t *)malloc(sizeof(Resource_t))) != NULL);
 
-   int err = mount_resource(r, pm->keyfile, pm->group, pm->dbenv, 
-        pm->force_resource_rebuild, global_config->server.lazy_allocate, 
+   int err = mount_resource(r, pm->keyfile, pm->group, pm->dbenv,
+        pm->force_resource_rebuild, global_config->server.lazy_allocate,
         global_config->truncate_expiration);
 
    if (err != 0) {
@@ -568,7 +568,7 @@ int main(int argc, const char **argv)
   j = 3*config.server.max_threads + 2*resource_list_n_used(config.rl) + 64;
   if (i < j) {
      k = (i - 2*resource_list_n_used(config.rl) - 64) / 3;
-     log_printf(0, "ibp_server: ERROR Too many threads!  Current threads=%d, n_resources=%d, and max fd=%d.\n", config.server.max_threads, resource_list_n_used(config.rl), i);
+      log_printf(0, "ibp_server: ERROR Too many threads!  Current threads=%d, n_resources=%d, and max fd=%d.\n", config.server.max_threads, resource_list_n_used(config.rl), i);
      log_printf(0, "ibp_server: Either make threads < %d or increase the max fd > %d (ulimit -n %d)\n", k, j, j);
      shutdown_now = 1;
   }
@@ -580,6 +580,9 @@ int main(int argc, const char **argv)
 
   //*** Install the commands: loads Vectable info and parses config options only ****
   install_commands(keyfile);
+
+  //save unis configs
+  parse_unis_config(keyfile);
 
   inip_destroy(keyfile);   //Free the keyfile context
 
@@ -643,6 +646,8 @@ printf("ibp_server.c: STDOUT=STDERR=LOG_FD() dnoes not work!!!!!!!!!!!!!!!!!!!!!
 
   //*** Start the activity log ***
   alog_open();
+
+  start_unis_registration();
 
   server_loop(&config);     //***** Main processing loop ******
 
