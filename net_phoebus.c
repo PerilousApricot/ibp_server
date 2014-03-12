@@ -111,9 +111,7 @@ int phoebus_close(net_sock_t *nsock)
   if (sock == NULL) return(0);
   if (sock->fd == -1) return(0);
 
-  int err = close(sock->fd);
-
-  lsl_close(sock->sess);
+  int err = xsp_close2(sock->sess);
 
   free(sock);
 
@@ -161,10 +159,10 @@ int phoebus_connect(net_sock_t *nsock, const char *hostname, int port, Net_timeo
    fd_set wfd;
    apr_time_t endtime;
    struct timeval to;
-   char dest[LSL_DEPOTID_LEN];
+   char dest[XSP_HOPID_LEN];
 
    log_printf(5, "phoebus_connect: Trying to make connection to Hostname: %s  Port: %d\n", hostname, port);
-   snprintf(dest, LSL_DEPOTID_LEN, "%s/%d", hostname, port);
+   snprintf(dest, XSP_HOPID_LEN, "%s/%d", hostname, port);
 
    if (sock == NULL) return(1);
 
@@ -182,47 +180,58 @@ int phoebus_connect(net_sock_t *nsock, const char *hostname, int port, Net_timeo
    memcpy(&(sock->address[0]), in_addr, i);
    
    if (sock->p_path != NULL) { 
-      sock->sess = lsl_session();
+      sock->sess = xsp_session();
 
       if (sock->tcpsize > 0) {
          log_printf(10, "phoebus_connect: Setting tcpbufsize=%d\n", sock->tcpsize);
-         if (lsl_setsockopt(sock->sess, SOL_SOCKET, SO_SNDBUF, (char*)&(sock->tcpsize), sizeof(sock->tcpsize)) != 0) {
+         if (xsp_setsockopt(sock->sess, SOL_SOCKET, SO_SNDBUF, (char*)&(sock->tcpsize), sizeof(sock->tcpsize)) != 0) {
             log_printf(0, "phoebus_connect: Can't configure SO_SNDBUF to %d!\n", sock->tcpsize);
          }
-         if (lsl_setsockopt(sock->sess, SOL_SOCKET, SO_RCVBUF, (char*)&(sock->tcpsize), sizeof(sock->tcpsize)) != 0) {
+         if (xsp_setsockopt(sock->sess, SOL_SOCKET, SO_RCVBUF, (char*)&(sock->tcpsize), sizeof(sock->tcpsize)) != 0) {
             log_printf(0, "phoebus_connect: Can't configure SO_RCVBUF to %d!\n", sock->tcpsize);
          }
       }
       
       for (i=0; i<sock->p_path->p_count; i++) {
             log_printf(15, "phoebus_connect: hop %d : %s\n", i, sock->p_path->path[i]);
-	    lsl_sess_appendchild(sock->sess, sock->p_path->path[i], LSL_DEPOT_NATIVE);
+	    xsp_sess_appendchild(sock->sess, sock->p_path->path[i], XSP_HOP_NATIVE);
       }
       
-      lsl_sess_appendchild(sock->sess, dest, 0);
-      
-      if (lsl_connect(sock->sess)) {
-	 log_printf(0, "phoebus_connect: could not connect to %s\n", dest);
-	 return (1);
+      xsp_sess_appendchild(sock->sess, dest, 0);
+
+      sock->sec = xsp_sess_new_security("ibp", NULL, "somecert.pem", "somekey.pem", NULL);
+      if (xsp_sess_set_security(sock->sess, sock->sec, XSP_SEC_NONE)) {
+	    fprintf(stderr, "could not set requested xsp security method\n");
+	    return (1);
       }
       
-      sfd = lsl_get_session_socket(sock->sess);      
+      if (xsp_connect(sock->sess)) {
+	    log_printf(0, "phoebus_connect: failed as could not connect to %s\n", dest);
+	    return (1);
+      }
+
+      if (xsp_signal_inf_data(sock->sess)) {
+	  fprintf(stderr, "phoebus_connect: failed to signal infinite length SPDU\n");
+	  return (1);
+      }
+      
+      sfd = xsp_get_session_socket(sock->sess);      
    }
    else {
-      log_printf(0, "phoebus_connect: called without valid phoebus path!\n");
+      log_printf(0, "phoebus_connect: failed as called without valid phoebus path!\n");
       return(1);
    }
 
    // Configure it correctly
    int flag=1;
    if (setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, (char*)&flag, sizeof(flag)) != 0) {
-      log_printf(0, "phoebus_connect: Can't configure SO_REUSEADDR!\n");
+      log_printf(0, "phoebus_connect: failed as can't configure SO_REUSEADDR!\n");
    }
 
 
    //Configure the socket for non-blocking I/O
    if ((err = fcntl(sfd, F_SETFL, O_NONBLOCK)) == -1) {  
-      log_printf(0, "phoebus_connect: Can't configure connection for non-blocking I/O!");
+      log_printf(0, "phoebus_connect: failed as can't configure connection for non-blocking I/O!");
    }
 
    log_printf(20, "phoebus_connect: Before select timeout=%lu time=" TT "\n", timeout, apr_time_now());
