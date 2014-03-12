@@ -2859,12 +2859,10 @@ int _alog_transfer_data(char *fname)
   envelope_t env;
   NetStream_t *ns;
   uint32_t response;
-  ibp_off_t pos, bpos, nleft, bsize;
+  ibp_off_t pos, bpos, nleft, bsize, messagesize;
   Net_timeout_t dt;
 
   set_net_timeout(&dt, 10, 0);
-
-  ActivityLogger__AlogFile cmd;
 
   //** Make the connection
   ns = new_netstream();
@@ -2873,7 +2871,7 @@ int _alog_transfer_data(char *fname)
   if (err != 0) {
      log_printf(0, "_alog_transfer_Data: Can't connect to %s:%d!\n", 
            global_config->server.alog_host, global_config->server.alog_port);
-     return(1);    
+     return(1);
   }
 
   set_net_timeout(&dt, 1, 0);
@@ -2889,37 +2887,22 @@ int _alog_transfer_data(char *fname)
   read_file_header(&alog);
   if (alog.header.state == STATE_BAD) {
      log_printf(0, "_alog_transfer_data: alog %s was not closed properly!\n", fname);
-//     fclose(alog.fd);
-//     return(3);
   }
 
   //** Prep and pack the message for sending
-  activity_logger__alog_file__init(&cmd);
-  cmd.name = global_config->server.iface[0].hostname;
+  //** Add the message header reserving space for the envelope
   fseeko(alog.fd, 0, SEEK_END);
-  cmd.messagesize = ftell(alog.fd);
-  cmd.starttime = alog.header.start_time;
-  cmd.stoptime = alog.header.end_time;
-  cmd.depottime = apr_time_now();
+  messagesize = ftell(alog.fd);
+  n = sprintf(&(buffer[ENVELOPE_SIZE]), "%s "  LU " " TT " " TT " " TT "\n", global_config->server.iface[0].hostname,
+      messagesize,  alog.header.start_time, alog.header.end_time, apr_time_now());
 
-  n = activity_logger__alog_file__get_packed_size(&cmd);
-  if (n == 0) {
-     fclose(alog.fd);
-     log_printf(0, "_alog_transfer_Data: Can't pack command %s for sending! n=%d\n", fname, n);
-     destroy_netstream(ns);
-     return(4);
-  }
-
-  //** Encode the header 
+  //** Encode the header and place it at the begininning
   envelope_set(&env, ECMD_ALOG_SEND, n);
   envelope_encode(&env, (unsigned char *)buffer);
-
-  //** And add the message
-  activity_logger__alog_file__pack(&cmd, (uint8_t *)&(buffer[ENVELOPE_SIZE]));
+  n += ENVELOPE_SIZE;
 
   //** send the command
-  n = n + ENVELOPE_SIZE;
-  err = write_netstream_block(ns, apr_time_now()+apr_time_make(30, 0), buffer, n);    
+  err = write_netstream_block(ns, apr_time_now()+apr_time_make(30, 0), buffer, n);
   if (err != NS_OK) {
      fclose(alog.fd);
      log_printf(0, "_alog_transfer_Data: write_netstream_block failed for sending %s header! err=%d n=%d\n", fname, err, n);
@@ -2928,7 +2911,7 @@ int _alog_transfer_data(char *fname)
   }
 
   //** Wait for the response
-  err = envelope_simple_recv(ns, &response);    
+  err = envelope_simple_recv(ns, &response);
   if (err != NS_OK) {
      fclose(alog.fd);
      log_printf(0, "_alog_transfer_Data: envelope_simple_recv failed reading response header! err=%d n=%d\n", err, n);
@@ -2942,14 +2925,14 @@ int _alog_transfer_data(char *fname)
      destroy_netstream(ns);
      return(6);
   }
-  
+
   //** Transfer the data
   nbytes = -100;
   err = 0;
   fseeko(alog.fd, 0, SEEK_SET);
-  for (pos = 0; (pos < cmd.messagesize) && (err == 0); pos = pos + bufsize) {
+  for (pos = 0; (pos < messagesize) && (err == 0); pos = pos + bufsize) {
      bsize = bufsize;
-     if ((pos+bsize) > cmd.messagesize) bsize = cmd.messagesize - pos;
+     if ((pos+bsize) > messagesize) bsize = messagesize - pos;
      nbytes = fread(buffer, bsize, 1, alog.fd);  //** Read the next block
 
      bpos = 0; nleft = bsize;
@@ -2966,7 +2949,7 @@ int _alog_transfer_data(char *fname)
 
      }
   }
-    
+
   fclose(alog.fd);
 
   if (err != 0) {
@@ -2976,7 +2959,7 @@ int _alog_transfer_data(char *fname)
   }
 
   //** Wait for the response
-  err = envelope_simple_recv(ns, &response);    
+  err = envelope_simple_recv(ns, &response);
   if (err != NS_OK) {
      log_printf(0, "_alog_transfer_Data: envelope_simple_recv failed reading response after send! err=%d n=%d\n", err, n);
      destroy_netstream(ns);

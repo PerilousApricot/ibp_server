@@ -61,7 +61,7 @@ typedef struct {
   int reject_count;      //** How many sockets we've closed due to load
   uint64_t reject_total; //** Total nubmer of sockets rejected ofver  the life of the depot
   apr_thread_mutex_t *lock;  //** Lock for accessing the taskmgr data
-  apr_thread_cond_t  *cond; 
+  apr_thread_cond_t  *cond;
   Stack_t *completed;
 } Taskmgr_t;
 
@@ -71,12 +71,12 @@ Taskmgr_t taskmgr;  //** Global used by the task rountines
 //  convert_epoch_time2net - Des what is says:)
 //*****************************************************************
 
-Net_timeout_t *convert_epoch_time2net(Net_timeout_t *tm, apr_time_t epoch_time) 
+Net_timeout_t *convert_epoch_time2net(Net_timeout_t *tm, apr_time_t epoch_time)
 {
-   apr_time_t dt = epoch_time - apr_time_now(); 
+   apr_time_t dt = epoch_time - apr_time_now();
    if (apr_time_sec(dt) < 0) dt = 5;  //** Even if it's timed out give it a little time
    return(set_net_timeout(tm, apr_time_sec(dt), 0));
-}     
+}
 
 //*****************************************************************
 // send_cmd_result - Sends the command result back
@@ -89,7 +89,9 @@ int send_cmd_result(ibp_task_t *task, int status)
    Net_timeout_t dt;
    int nbytes, nstr;
 
-   snprintf(result, sizeof(result), "%d \n", status);   
+   if (ns == NULL) return(0);
+
+   snprintf(result, sizeof(result), "%d \n", status);
    log_printf(10, "send_cmd_result(tid=" LU " ns=%d): %s", task->tid, ns->id, result);
    convert_epoch_time2net(&dt, task->cmd_timeout);
    nstr = strlen(result);
@@ -242,6 +244,13 @@ int print_config(char *buffer, int *used, int nbytes, Config_t *cfg)
   append_printf(buffer, used, nbytes, "\n");
   append_printf(buffer, used, nbytes, "force_resource_rebuild = %d\n", cfg->force_resource_rebuild);
   append_printf(buffer, used, nbytes, "truncate_duration = %d\n", cfg->truncate_expiration);
+  append_printf(buffer, used, nbytes, "\n");
+  append_printf(buffer, used, nbytes, "rid_check_interval = %d\n", server->rid_check_interval);
+  append_printf(buffer, used, nbytes, "eject_timoeut = %d\n", server->eject_timeout);
+  append_printf(buffer, used, nbytes, "rid_log = %s\n", server->rid_log);
+  append_printf(buffer, used, nbytes, "rid_eject_script = %s\n", server->rid_eject_script);
+  append_printf(buffer, used, nbytes, "rid_eject_tmp_path = %s\n", server->rid_eject_tmp_path);
+  append_printf(buffer, used, nbytes, "\n");
   d = (cfg->soft_fail == -1) ? 0 : 1;
   append_printf(buffer, used, nbytes, "soft_fail = %d\n", d);
   append_printf(buffer, used, nbytes, "\n");

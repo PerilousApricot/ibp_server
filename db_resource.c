@@ -457,7 +457,7 @@ int mount_db_generic(inip_file_t *kf, const char *kgroup, DB_env_t *env, DB_reso
    }
    if (dbres->pdb->associate(dbres->pdb, NULL, db, get_expire_key, 0) != 0) {
       printf("mount_db: Can't associate expire DB: %s\n", fname);
-      abort();     
+      abort();
    }
 
    //*** Create/Open DB containing the soft allocations ***
@@ -473,14 +473,14 @@ int mount_db_generic(inip_file_t *kf, const char *kgroup, DB_env_t *env, DB_reso
    }
    if (dbres->pdb->associate(dbres->pdb, NULL, db, get_soft_key, 0) != 0) {
       printf("mount_db: Can't associate soft DB: %s\n", fname);
-      abort();     
+      abort();
    }
 
    //** and make the mutex
    apr_pool_create(&(dbres->pool), NULL);
    apr_thread_mutex_create(&(dbres->mutex), APR_THREAD_MUTEX_DEFAULT,dbres->pool);
 
-   return(0);  
+   return(0);
 }
 
 //***************************************************************************
@@ -498,19 +498,41 @@ int mount_db(inip_file_t *kf, const char *kgroup, DB_env_t *dbenv, DB_resource_t
 
 int umount_db(DB_resource_t *dbres)
 {
-  int i;
+  int i, err, val;
 
-  for (i=0; i<3; i++) dbres->cap[i]->close(dbres->cap[i], 0);
+  err = 0;
+
+  for (i=0; i<3; i++) {
+     val = dbres->cap[i]->close(dbres->cap[i], 0);
+     if (val != 0) {
+        err++;
+        log_printf(0, "ERROR closing DB cap[%d]=%d\n", i, val);
+     }
+  }
+
 //dbres->cap_read->close(dbres->cap_read, 0);
-  dbres->expire->close(dbres->expire, 0);
-  dbres->soft->close(dbres->soft, 0);
-  dbres->pdb->close(dbres->pdb, 0);
+  val = dbres->expire->close(dbres->expire, 0);
+  if (val != 0) {
+     err++;
+     log_printf(0, "ERROR closing expire DB err=%d\n", val);
+  }
+  val = dbres->soft->close(dbres->soft, 0);
+  if (val != 0) {
+     err++;
+     log_printf(0, "ERROR closing soft DB err=%d\n", val);
+  }
+  val = dbres->pdb->close(dbres->pdb, 0);
+  if (val != 0) {
+     err++;
+     log_printf(0, "ERROR closing main DB err=%d\n", val);
+  }
 
   if (dbres->env != NULL) {
     if (dbres->env->local == 1) {  //(** Local DB environment so shut it down as well
        log_printf(15, "Closing local environment\n");
        if ((i = close_db_env(dbres->env)) != 0) {
-          log_printf(0, "Error closing DB envirnment!  Err=%d\n", i);
+          log_printf(0, "ERROR closing DB envirnment!  Err=%d\n", i);
+          err++;
        }
     }
   }
@@ -521,7 +543,7 @@ int umount_db(DB_resource_t *dbres)
   free(dbres->loc);
   free(dbres->kgroup);
 
-  return(0);
+  return(err);
 }
 
 //---------------------------------------------------------------------------

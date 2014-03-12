@@ -1532,14 +1532,14 @@ int read_internal_set_mode(ibp_task_t *task, char **bstate)
    strncpy(arg->crid, string_token(NULL, " ", bstate, &fin), sizeof(arg->crid)-1);
    if (ibp_str2rid(arg->crid, &(arg->rid)) != 0) {
       log_printf(1, "read_internal_set_mode: Bad RID: %s\n", arg->crid);
-      send_cmd_result(task, IBP_E_INVALID_RID);                
+      send_cmd_result(task, IBP_E_INVALID_RID);
       return(-1);
    }
 
    //** Make sure it's not RID 0
    if (ibp_rid_is_empty(arg->rid) == 1) {
       log_printf(1, "read_internal_set_mode: Can't use RID 0!\n");
-      send_cmd_result(task, IBP_E_INVALID_RID);                
+      send_cmd_result(task, IBP_E_INVALID_RID);
       return(-1);
    }
 
@@ -1554,11 +1554,11 @@ int read_internal_set_mode(ibp_task_t *task, char **bstate)
    opt = -1; sscanf(string_token(NULL, " ", bstate, &fin), "%d", &opt);
    if ((opt < 0) && (opt > 2)) {
       log_printf(1, "read_internal_set_mode: Invalid force_rebuild=%d\n", opt);
-      send_cmd_result(task, IBP_E_INVALID_PARAMETER);                
+      send_cmd_result(task, IBP_E_INVALID_PARAMETER);
       return(-1);
    }
    arg->mode = opt;
-   
+
    get_command_timeout(task, bstate);
 
    debug_printf(1, "read_internal_set_mode: Successfully parsed rescan command\n");
@@ -1587,35 +1587,38 @@ int read_internal_mount(ibp_task_t *task, char **bstate)
    strncpy(arg->crid, string_token(NULL, " ", bstate, &fin), sizeof(arg->crid)-1);
    if (ibp_str2rid(arg->crid, &(arg->rid)) != 0) {
       log_printf(1, "read_internal_mount: Bad RID: %s\n", arg->crid);
-      send_cmd_result(task, IBP_E_INVALID_RID);                
+      send_cmd_result(task, IBP_E_INVALID_RID);
       return(-1);
    }
 
    //** Make sure it's not RID 0
    if (ibp_rid_is_empty(arg->rid) == 1) {
       log_printf(1, "read_internal_mount: Can't use RID 0!\n");
-      send_cmd_result(task, IBP_E_INVALID_RID);                
+      send_cmd_result(task, IBP_E_INVALID_RID);
       return(-1);
    }
 
-   //** and that it's not mounted
-   if (resource_lookup(global_config->rl, arg->crid) != NULL) {
-      log_printf(10, "handle_internal_mount: Already mounted RID :%s\n",arg->crid);
-      send_cmd_result(task, IBP_E_INVALID_RID);
-      return(0);
-   }
+   //** Checking if it's already mounted is done by the handle_mountroutines
 
    //** Get the force_rebuild flag
    opt = -1; sscanf(string_token(NULL, " ", bstate, &fin), "%d", &opt);
    if ((opt < 0) && (opt > 2)) {
       log_printf(1, "read_internal_mount: Invalid force_rebuild=%d\n", opt);
-      send_cmd_result(task, IBP_E_INVALID_PARAMETER);                
+      send_cmd_result(task, IBP_E_INVALID_PARAMETER);
       return(-1);
    }
    arg->force_rebuild = opt;
-   
+
    get_command_timeout(task, bstate);
 
+   //** Get the optional message
+   opt = 0; sscanf(string_token(NULL, " ", bstate, &fin), "%d", &opt);
+   arg->msg[0] = 0;
+   if ((opt > 0) && (opt < sizeof(arg->msg))) {
+     strncpy(arg->msg, (*bstate), opt);
+     arg->msg[opt] = 0;
+     log_printf(5, "msg=!%s!\n", arg->msg);
+   }
    debug_printf(1, "read_internal_mount: Successfully parsed rescan command\n");
    return(0);
 }
@@ -1643,14 +1646,14 @@ int read_internal_umount(ibp_task_t *task, char **bstate)
    strncpy(arg->crid, string_token(NULL, " ", bstate, &fin), sizeof(arg->crid)-1);
    if (ibp_str2rid(arg->crid, &(arg->rid)) != 0) {
       log_printf(1, "Bad RID: %s\n", arg->crid);
-      send_cmd_result(task, IBP_E_INVALID_RID);                
+      send_cmd_result(task, IBP_E_INVALID_RID);
       return(-1);
    }
 
    //** Make sure it's not RID 0
    if (ibp_rid_is_empty(arg->rid) == 1) {
       log_printf(1, "Can't use RID 0!\n");
-      send_cmd_result(task, IBP_E_INVALID_RID);                
+      send_cmd_result(task, IBP_E_INVALID_RID);
       return(-1);
    }
 
@@ -1665,12 +1668,21 @@ int read_internal_umount(ibp_task_t *task, char **bstate)
    opt = -1; sscanf(string_token(NULL, " ", bstate, &fin), "%d", &opt);
    if (opt < 1) {
       log_printf(1, "Invalid delay=%d\n", opt);
-      send_cmd_result(task, IBP_E_INVALID_PARAMETER);                
+      send_cmd_result(task, IBP_E_INVALID_PARAMETER);
       return(-1);
    }
    arg->delay = opt;
-   
+
    get_command_timeout(task, bstate);
+
+   //** Get the optional message
+   opt = 0; sscanf(string_token(NULL, " ", bstate, &fin), "%d", &opt);
+   arg->msg[0] = 0;
+   if ((opt > 0) && (opt < sizeof(arg->msg))) {
+     strncpy(arg->msg, (*bstate), opt);
+     arg->msg[opt] = 0;
+     log_printf(5, "msg=!%s!\n", arg->msg);
+   }
 
    debug_printf(1, "Successfully parsed rescan command\n");
    return(0);

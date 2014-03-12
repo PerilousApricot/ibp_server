@@ -3,16 +3,16 @@
 # - Find Phoebus libraries and includes
 #
 # This module defines
-#    PHOEBUS_INCLUDE_DIR - where to find libxsp_client.h
+#    PHOEBUS_INCLUDE_DIR - where to find liblsl_client.h
 #    PHOEBUS_LIBRARIES - the libraries needed to use Phoebus.
 #    PHOEBUS_FOUND - If false didn't find phoebus
 
 # Find the include path
 
-find_path(PHOEBUS_INCLUDE_DIR libxsp_client.h)
+find_path(PHOEBUS_INCLUDE_DIR liblsl_client.h)
 
 set(APR_NAMES ${APR_NAMES} apr-1)
-find_library(PHOEBUS_LIBRARY NAMES xsp_client dl)
+find_library(PHOEBUS_LIBRARY NAMES lsl_client dl)
 
 if (PHOEBUS_LIBRARY AND PHOEBUS_INCLUDE_DIR)
     SET(PHOEBUS_FOUND "YES")

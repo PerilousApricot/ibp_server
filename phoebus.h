@@ -36,10 +36,13 @@ http://www.accre.vanderbilt.edu
 #include "iniparse.h"
 
 #ifdef _ENABLE_PHOEBUS
-#include "libxsp_client.h"
+#include "liblsl_client.h"
 #else 
-  typedef void libxspSess;
+  typedef void liblslSess;
 #endif
+
+
+#define LSL_DEPOTID_LEN 60
 
 #ifdef __cplusplus
 extern "C" {

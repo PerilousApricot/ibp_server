@@ -203,25 +203,26 @@ typedef struct {
   int   trash_type;
   char    crid[128];        //** Character version of the RID for querying
   char    trash_id[1024];  //** Trash file id
-} Cmd_internal_undelete_t;  
+} Cmd_internal_undelete_t;
 
 typedef struct {
   rid_t rid;                //** RID for rescanning or 0 if all
   char    crid[128];        //** Character version of the RID for querying
-} Cmd_internal_rescan_t;  
+} Cmd_internal_rescan_t;
 
 typedef struct {
   rid_t rid;                //** RID for rescanning or 0 if all
   char    crid[128];        //** Character version of the RID for querying
   int   force_rebuild;      //** Only used for mount command
   int   delay;              //** Only used for umount command
-} Cmd_internal_mount_t;  
+  char msg[1024];           //** Message to add to the log file
+} Cmd_internal_mount_t;
 
 typedef struct {
   rid_t rid;                //** RID for setting/getting the mode
   char    crid[128];        //** Character version of the RID for querying
   int   mode;               //** New RWM mode
-} Cmd_internal_mode_t;  
+} Cmd_internal_mode_t;
 
 
 typedef union {            //** Union of command args

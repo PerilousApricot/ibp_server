@@ -807,46 +807,13 @@ osd_off_t fsfd_lock(osd_fs_t *fs, osd_fs_fd_t *fsfd, int mode, osd_off_t start_b
 //**************************************************
 
 int fs_reserve(osd_t *d, osd_id_t id, osd_off_t len) {
-  osd_fs_t *fs = (osd_fs_t *)(d->private);
-  int fd_num;
 
-//log_printf(10, "osd_fs: reserve(" LU ", " ST ")\n", id, len);
+log_printf(10, "osd_fs: reserve(" LU ", " ST ")\n", id, len);
 
   osd_fs_fd_t *fsfd = (osd_fs_fd_t *)fs_open(d, id, OSD_READ_MODE);
   if (fsfd == NULL) return(0);
 
-  fd_num = fileno(fsfd->fd);
-   if (fs->mount_type == 0) {
-      log_printf(10, "osd_fs: POSIX reserve(" LU ", " I64T ")\n", id, len);
-      posix_fallocate(fd_num, 0, len);
-//   int bufsize = 2 * 1024 *1024;
-//   char buffer[bufsize];
-//   int nblocks = len / bufsize;
-//   int rem = len % bufsize;
-//   int i;
-//   memset(buffer, 0, bufsize);
-//   for (i=0; i<nblocks; i++) {
-//      fwrite(buffer, 1, bufsize, fsfd->fd);
-//   }
-//   fwrite(buffer, 1, rem, fsfd->fd);
-//i=nblocks*bufsize + rem;
-//log_printf(10, "osd_fs: reserve count=%d\n", i);
-//sleep(1);
-
-   } else {
-     log_printf(10, "osd_fs: XFS reserve(" LU ", " I64T ")\n", id, len);
-
-#ifdef _HAS_XFS
-      xfs_flock64_t arg;
-
-      memset(&arg, 0, sizeof(arg));
-      arg.l_whence = 0; arg.l_start = 0; arg.l_len = len;      
-      if ((err = xfsctl(fname, fd_num, XFS_IOC_ALLOCSP64, &arg)) != 0) {
-         log_printf(0, "osd_fs:reserve: xfsctl returned an error=%d id=" LU "\n", err, id);
-         return(-1);
-      }
-#endif
-   }
+  posix_fallocate(fileno(fsfd->fd), 0, len);
 
   fs_close(d, (osd_fd_t *)fsfd);
 
@@ -914,23 +881,30 @@ int _fs_write_block_header(osd_fs_fd_t *fsfd, uint32_t block_bytes_used, char *c
 // create_id - Creates a new object id for use.
 //**************************************************
 
-osd_id_t fs_create_id(osd_t *d, int chksum_type, int header_size, int block_size) {
+osd_id_t fs_create_id(osd_t *d, int chksum_type, int header_size, int block_size, osd_id_t id) {
    osd_fs_t *fs = (osd_fs_t *)(d->private);
    char  fname[fs->pathlen];
    char  cs_value[CHKSUM_MAX_SIZE];
-   osd_id_t id=0;
    int32_t dbytes;
    int n, cs_size;
    fs_header_t header;
    chksum_t chksum;
+
    apr_thread_mutex_lock(fs->lock);
 
-   do {      //Generate a unique key
-      id = _generate_key();
+   if (id == 0) {
+      do {      //Generate a unique key
+         id = _generate_key();
 log_printf(15,"fs_create_id: id=" LU " chksum_type=%d\n", id, chksum_type);
-   } while (fs_id_exists(d, id));
+      } while (fs_id_exists(d, id));
+   }
 
    FILE *fd = fopen(_id2fname(fs, id, fname, sizeof(fname)), "w");   //Make sure and create the file so no one else can use it
+   if (fd == NULL) {
+      apr_thread_mutex_unlock(fs->lock);
+      log_printf(1, "ERROR creating allocations! fname=%s\n", fname);
+      return(0);
+   }
 
    if (chksum_valid_type(chksum_type) == 1) {
       memcpy(header.magic, CHKSUM_MAGIC, sizeof(header.magic));
@@ -949,12 +923,12 @@ log_printf(15,"fs_create_id: id=" LU " chksum_type=%d\n", id, chksum_type);
       if (n != (sizeof(header) + sizeof(int32_t) + cs_size)) {
          log_printf(0, "fs_create_id:  Error storing magic header+chksum! id=" LU " \n", id);
       }
-   } 
-   
+   }
+
    fclose(fd);
 
    apr_thread_mutex_unlock(fs->lock);
-   
+
    return(id);
 }
 
@@ -1130,7 +1104,7 @@ osd_off_t fs_offset_p2l(osd_fs_t *fs, osd_fs_fd_t *fsfd, osd_off_t p_offset)
 
   }
 
-  return(n);  
+  return(n);
 }
 
 
@@ -1154,7 +1128,7 @@ int fs_truncate(osd_t *d, osd_id_t id, osd_off_t l_size) {
    if (l_size > 0) l_size--;  //** This is the final offset
    n = fs_offset_l2p(fs, fsfd, l_size);  //** Convert it to the physical offset
    if (l_size > 0) n++;   //** convert the physical offset to a length
-   
+
    err = ftruncate(fileno(fsfd->fd), n);
 
    //** Now we need to recalculate the last blocks chksum if needed
@@ -1202,13 +1176,13 @@ osd_off_t fs_fd_size(osd_t *d, osd_fd_t *ofd)
    osd_off_t n;
 
    if (fsfd == NULL) return(0);
-   
+
    fseeko(fsfd->fd, 0, SEEK_END);
    n = ftell(fsfd->fd);
 
    n = fs_offset_p2l(fs, fsfd, n);
 
-   return(n);   
+   return(n);
 }
 
 //*************************************************************
@@ -1226,7 +1200,7 @@ osd_off_t fs_size(osd_t *d, osd_id_t id) {
    n = ftell(fsfd->fd);
 
    n = fs_offset_p2l(fs, fsfd, n);
-   
+
    fs_close(d, (osd_fd_t *)fsfd);
 
    return(n);
@@ -1302,15 +1276,18 @@ int object_open(osd_fs_t *fs, osd_fs_object_t *obj)
 
    obj->is_ok = 0;  //** Default is failure
    normal = 1;
-  
-   FILE *fd = fopen(_id2fname(fs, obj->id, fname, sizeof(fname)), "r+");   
+
+   FILE *fd = fopen(_id2fname(fs, obj->id, fname, sizeof(fname)), "r+");
    if (fd != NULL) {
      n = fs_read_header(fd, &(obj->header));
      if (n == sizeof(fs_header_t)) {
         normal = memcmp(obj->header.magic, CHKSUM_MAGIC, sizeof(CHKSUM_MAGIC));
      }
-   log_printf(10, "object_open: id=" LU " fs=%s normal=%d fread=%d\n", obj->id, fs->devicename, normal, n); flush_log();
-   }
+     log_printf(10, "object_open: id=" LU " fs=%s normal=%d fread=%d\n", obj->id, fs->devicename, normal, n); flush_log();
+   } else {
+     log_printf(1, "ERROR with open id=" LU " fs=%s\n", obj->id, fs->devicename); flush_log();
+     return(1);
+  }
 
    log_printf(10, "object_open: id=" LU " fs=%s normal=%d n_opened=%d\n", obj->id, fs->devicename, normal, obj->n_opened); flush_log();
 
@@ -1321,44 +1298,42 @@ int object_open(osd_fs_t *fs, osd_fs_object_t *obj)
       fcs->hbs_with_chksum = 1;
       fcs->is_valid = 0;
       blank_chksum_set(&(fcs->chksum));
-      obj->read = fs_normal_read;      
+      obj->read = fs_normal_read;
       obj->write = fs_normal_write;
-      memset(&(obj->header), 0, sizeof(fs_header_t));      
+      memset(&(obj->header), 0, sizeof(fs_header_t));
       obj->state = OSD_STATE_GOOD;
    } else {  //** Got a chksum type allocation
       chksum_set(&(fcs->chksum), obj->header.chksum_type);
       if (chksum_valid_type(obj->header.chksum_type) == 0) {
-         n = obj->header.chksum_type;         
+         n = obj->header.chksum_type;
          log_printf(0, "object_open:  Invalid chksum type! id=" LU " type=%d \n", obj->id, n);
          fclose(fd);
-         return(-2);    
+         return(-2);
       }
 
       obj->state = obj->header.state;
       if (obj->state != OSD_STATE_GOOD) {
          log_printf(0, "object_open:  Bad state! id=" LU " state=%d \n", obj->id, obj->state);
-//         fclose(fd);
-//         return(-3);    
       }
 
       fcs->header_blocksize = obj->header.header_size;
       fcs->blocksize = obj->header.block_size;
       n = chksum_size(&(fcs->chksum), CHKSUM_DIGEST_BIN);
-      fcs->hbs_with_chksum = fcs->header_blocksize + n + sizeof(uint32_t);      
-      fcs->bs_with_chksum = fcs->blocksize + n + sizeof(uint32_t);      
+      fcs->hbs_with_chksum = fcs->header_blocksize + n + sizeof(uint32_t);
+      fcs->bs_with_chksum = fcs->blocksize + n + sizeof(uint32_t);
       fcs->is_valid = 1;
 
-      obj->read = fs_chksum_read;      
-      obj->write = fs_chksum_write;      
-   } 
-   
+      obj->read = fs_chksum_read;
+      obj->write = fs_chksum_write;
+   }
+
    if (fd != NULL) fclose(fd);
 
    if (obj->state != OSD_STATE_GOOD) _insert_corrupt_hash(fs, obj->id, "chksum");
 
    obj->is_ok = 1;  //** Successful open!
 
-   return(0);   
+   return(0);
 }
 
 
@@ -1372,7 +1347,7 @@ osd_fs_object_t *fs_object_get(osd_fs_t *fs, osd_id_t id)
   osd_fs_object_t *obj;
   int err;
 
-  apr_thread_mutex_lock(fs->obj_lock);  
+  apr_thread_mutex_lock(fs->obj_lock);
 
   //** 1st see if it's already in use
   obj = (osd_fs_object_t *)apr_hash_get(fs->obj_hash, &id, sizeof(osd_id_t));
@@ -1382,52 +1357,63 @@ osd_fs_object_t *fs_object_get(osd_fs_t *fs, osd_id_t id)
      obj->id = id;
      obj->my_slot = pch;
      obj->n_opened = 1;  //** Include the caller
+     obj->n_pending = 0; //** Reset the pending count
      obj->n_read = 0;
      obj->n_write = 0;
      obj->count = 0;
-     obj->is_ok = -1;  //** Default to object_open failure 
+     obj->is_ok = -1;  //** Default to object_open failure
      obj->state = OSD_STATE_GOOD;
 
-     apr_hash_set(fs->obj_hash, &(obj->id), sizeof(osd_id_t), obj);  //** Add it to the table 
+     apr_hash_set(fs->obj_hash, &(obj->id), sizeof(osd_id_t), obj);  //** Add it to the table
 
      apr_thread_mutex_lock(obj->lock);  //** Lock it so no one else can open/close it
 
-     apr_thread_mutex_unlock(fs->obj_lock);   //** Unlock the list and do the open 
+     apr_thread_mutex_unlock(fs->obj_lock);   //** Unlock the list and do the open
 
      err = object_open(fs, obj);  //** Opens the object and stores the approp r/w routines
 
+     apr_thread_mutex_unlock(obj->lock);   // Free the object lock
+
      if (err != 0) {  //** Failed on open so cleanup
-        apr_thread_mutex_unlock(obj->lock);   // Free the object lock
-            //--- Between these two lines is where a race condition could occur requiring the is_ok variable ---
-        apr_thread_mutex_lock(fs->obj_lock);   //** and reacquire it in the proper order
-        apr_thread_mutex_lock(obj->lock);
-        apr_hash_set(fs->obj_hash, &(obj->id), sizeof(osd_id_t), NULL);
-        release_pigeon_coop_hole(fs->obj_list, &pch);
-        apr_thread_mutex_unlock(fs->obj_lock); 
+        apr_thread_mutex_lock(fs->obj_lock);   //** Can only remove if no one is waiting
+        if (obj->n_pending <= 0) {
+           apr_hash_set(fs->obj_hash, &(obj->id), sizeof(osd_id_t), NULL);
+           release_pigeon_coop_hole(fs->obj_list, &pch);
+        }
+        apr_thread_mutex_unlock(fs->obj_lock);
         obj = NULL;
+     } else {
+        log_printf(15, "fs_object_get(1): id=" LU " nopened=%d shelf=%d hole=%d\n", obj->id, obj->n_opened, obj->my_slot.shelf, obj->my_slot.hole);
      }
-
-     log_printf(15, "fs_object_get(1): id=" LU " nopened=%d shelf=%d hole=%d\n", obj->id, obj->n_opened, obj->my_slot.shelf, obj->my_slot.hole);
-
-     apr_thread_mutex_unlock(obj->lock); 
   } else {  //** Already opened so just increase the ref count
-     apr_thread_mutex_lock(obj->lock); 
+     apr_thread_mutex_lock(obj->lock);
 
      //** Make sure object_open didn't fail
+     err = 0;
+     obj->n_pending--;
+     log_printf(15, "fs_object_get(2): want_id=" LU " id=" LU " nopened=%d npending=%d shelf=%d hole=%d err=%d\n", id, obj->id, obj->n_opened, obj->n_pending, obj->my_slot.shelf, obj->my_slot.hole, err);
+
      if ((obj->id == id) && (obj->is_ok == 1)) {  //** and id matches and is ok
         obj->n_opened++;
+        apr_thread_mutex_unlock(obj->lock);
      } else {
-        obj = NULL;
+        err = 1;
+
+        if ((obj->n_pending <= 0) && (obj->n_opened <= 0)) {  //** Last person in failure chain so do the final clean up
+           apr_thread_mutex_unlock(obj->lock);
+           apr_hash_set(fs->obj_hash, &(obj->id), sizeof(osd_id_t), NULL);
+           release_pigeon_coop_hole(fs->obj_list, &(obj->my_slot));
+        } else {  //** Someone else is waiting so let them clean up
+           apr_thread_mutex_unlock(obj->lock);
+        }
      }
 
-     log_printf(15, "fs_object_get(2): id=" LU " nopened=%d shelf=%d hole=%d\n", obj->id, obj->n_opened, obj->my_slot.shelf, obj->my_slot.hole);
+     log_printf(15, "fs_object_get(2): id=" LU "  err=%d\n", id, err);
 
      apr_thread_mutex_unlock(fs->obj_lock);
-     apr_thread_mutex_unlock(obj->lock); 
+
+      if (err == 1) obj = NULL;
   }
-
-
-
 
   return(obj);
 }
@@ -1442,8 +1428,7 @@ int fs_object_release(osd_fs_t *fs, osd_fs_object_t *obj)
 
   apr_thread_mutex_lock(obj->lock);
 
-log_printf(15, "fs_object_release: id=" LU " nopened=%d state=%d\n", obj->id, obj->n_opened, obj->state);
-log_printf(15, "fs_object_release: id=" LU " nopened=%d shelf=%d hole=%d\n", obj->id, obj->n_opened, obj->my_slot.shelf, obj->my_slot.hole);
+log_printf(15, "id=" LU " nopened=%d npending=%d state=%d shelf=%d hole=%d\n", obj->id, obj->n_opened, obj->n_pending, obj->state, obj->my_slot.shelf, obj->my_slot.hole);
 
   if (obj->n_opened > 1) {  //** Early exit
      obj->n_opened--;
@@ -1451,19 +1436,18 @@ log_printf(15, "fs_object_release: id=" LU " nopened=%d shelf=%d hole=%d\n", obj
      return(0);
   }
 
-  //** Reacquire the locks in the proper order     
+  //** Reacquire the locks in the proper order
   //** This is to eliminate a race condition on open/close
   apr_thread_mutex_unlock(obj->lock); //** release the original lock
 
   apr_thread_mutex_lock(fs->obj_lock);  //** Acquire it in the order it was created
-  apr_thread_mutex_lock(obj->lock); 
+  apr_thread_mutex_lock(obj->lock);
 
   obj->n_opened--;
 
-log_printf(15, "fs_object_release: id=" LU " nopened=%d  Trying to REALLY close it!\n", obj->id, obj->n_opened);
-log_printf(15, "fs_object_release: id=" LU " nopened=%d shelf=%d hole=%d\n", obj->id, obj->n_opened, obj->my_slot.shelf, obj->my_slot.hole);
+log_printf(15, "Trying to REALLY close it... id=" LU " nopened=%d npending=%d shelf=%d hole=%d\n", obj->id, obj->n_opened, obj->n_pending, obj->my_slot.shelf, obj->my_slot.hole);
 
-  if (obj->n_opened <= 0) {  //** Now *really* close it
+  if ((obj->n_opened <= 0) && (obj->n_pending == 0)) {  //** Now *really* close it
      apr_hash_set(fs->obj_hash, &(obj->id), sizeof(osd_id_t), NULL);
      apr_thread_mutex_unlock(obj->lock);   //** Free my lock since it's now removed from the hash and before the release
 
@@ -1474,7 +1458,7 @@ log_printf(15, "fs_object_release: id=" LU " nopened=%d shelf=%d hole=%d\n", obj
      apr_thread_mutex_unlock(obj->lock);   //** Free my lock.  False alarm
   }
 
-  apr_thread_mutex_unlock(fs->obj_lock); 
+  apr_thread_mutex_unlock(fs->obj_lock);
 
   return(0);
 }
@@ -1487,7 +1471,7 @@ osd_fs_fd_t *fs_object_fd_get(osd_fs_t *fs, osd_fs_object_t *obj, int mode)
 {
   pigeon_coop_hole_t pch = reserve_pigeon_coop_hole(fs->fd_list);
   osd_fs_fd_t *fd = pigeon_coop_hole_data(&pch);
-  fd->my_slot = pch;  
+  fd->my_slot = pch;
   fd->obj = obj;
   fd->chksum = obj->fd_chksum.chksum;
   chksum_reset(&(fd->chksum));
@@ -1523,16 +1507,14 @@ osd_fs_fd_t *fsfd_get(osd_fs_t *fs, osd_id_t id, int mode)
   //** Find a free/existing object slot depending on if the file is currrently in use or not
   obj = fs_object_get(fs, id);
   if (obj == NULL) {
-     log_printf(0, "fsfd_get: Can't get an object slot!  id=" LU "\n", id);
-     apr_thread_mutex_unlock(fs->obj_lock);  
+     log_printf(1, "fsfd_get: Can't get an object slot!  id=" LU "\n", id);
      return(NULL);
   }
 
   //** Find an fd slot
-  fsfd = fs_object_fd_get(fs, obj, mode);  
+  fsfd = fs_object_fd_get(fs, obj, mode);
   if (fsfd == NULL) {
-     log_printf(0, "fsfd_get: Can't get an fd slot!  id=" LU "\n", id);
-     apr_thread_mutex_unlock(fs->obj_lock);  
+     log_printf(1, "fsfd_get: Can't get an fd slot!  id=" LU "\n", id);
      return(NULL);
   }
 
@@ -1552,9 +1534,6 @@ int fsfd_remove(osd_fs_t *fs, osd_fs_fd_t *fsfd)
   obj = fsfd->obj;  //** Get the object 1st
   fs_object_fd_release(fs, fsfd);  //** Then release the fd
   fs_object_release(fs, obj);      //** and finally the object itself
-  
-//  apr_thread_mutex_lock(fsfd->obj->lock);
-//  apr_thread_mutex_lock(fs->obj_lock);
 
   return(0);
 }
@@ -1567,14 +1546,15 @@ osd_fd_t *fs_open(osd_t *d, osd_id_t id, int mode)
 {
    osd_fs_t *fs = (osd_fs_t *)(d->private);
    char fname[fs->pathlen];
+
    osd_fs_fd_t *fsfd = fsfd_get(fs, id, mode);
-   if (fsfd == NULL) return(NULL);   
-   
-   fsfd->fd = fopen(_id2fname(fs, id, fname, sizeof(fname)), "r+"); 
+   if (fsfd == NULL) return(NULL);
+
+   fsfd->fd = fopen(_id2fname(fs, id, fname, sizeof(fname)), "r+");
    if (fsfd->fd == NULL) {
       if (mode == OSD_WRITE_MODE) {
          log_printf(10, "fs_open(" LU ", %d, w+) doesn't exist so creating the file\n", id, mode);
-         fsfd->fd = fopen(_id2fname(fs, id, fname, sizeof(fname)), "w+"); 
+         fsfd->fd = fopen(_id2fname(fs, id, fname, sizeof(fname)), "w+");
          if (fsfd->fd == NULL) {
             log_printf(0, "fs_open(" LU ", %d) open error = %d\n", id, mode, errno);
             fsfd_remove(fs, fsfd);
@@ -1586,9 +1566,10 @@ osd_fd_t *fs_open(osd_t *d, osd_id_t id, int mode)
          return(NULL);
       }
    }
+
    log_printf(10, "fs_open(" LU ", %d)=%p success\n", id, mode, fsfd->fd);
 
-   return((osd_fd_t *)fsfd);  
+   return((osd_fd_t *)fsfd);
 }
 
 //*************************************************************
@@ -2303,7 +2284,7 @@ osd_off_t fs_chksum_read(osd_fs_t *fs, osd_fs_fd_t *fsfd, osd_off_t offset, osd_
      fsfd_unlock(fs, fsfd);
    } while (end_got < end_block);
 
-   if (err != OSD_STATE_GOOD) { 
+   if (err != OSD_STATE_GOOD) {
       apr_thread_mutex_lock(fsfd->obj->lock);    
       fsfd->obj->header.state = n; 
       fsfd->obj->state = n;
@@ -2735,7 +2716,7 @@ osd_iter_t *fs_new_iterator(osd_t *d)
    iter->n = 0;
    iter->fs = (osd_fs_t *)(d->private);
 
-   if (fs_opendir(iter) != 0) return(NULL);
+   if (fs_opendir(iter) != 0) { free(iter); free(oi); return(NULL); }
 
    return(oi);
 }
@@ -2746,7 +2727,12 @@ osd_iter_t *fs_new_iterator(osd_t *d)
 
 void fs_destroy_iterator(osd_iter_t *oi)
 {
-  osd_fs_iter_t *iter = (osd_fs_iter_t *)oi->arg;
+  osd_fs_iter_t *iter;
+
+  if (oi == NULL) return;
+
+  iter = (osd_fs_iter_t *)oi->arg;
+
 
   if (iter->cdir != NULL) closedir(iter->cdir);
 
@@ -2760,17 +2746,20 @@ void fs_destroy_iterator(osd_iter_t *oi)
 
 int fs_iterator_next(osd_iter_t *oi, osd_id_t *id)
 {
-  osd_fs_iter_t *iter = (osd_fs_iter_t *)oi->arg;
+  osd_fs_iter_t *iter;
   struct dirent *result;
-  int finished;
+  int finished, n;
+
+  if (oi == NULL) return(1);
+  iter = (osd_fs_iter_t *)oi->arg;
 
   if (iter->n >= DIR_MAX) return(1);
 
   finished = 0;
   do {
-    readdir_r(iter->cdir, &(iter->entry),  &result);
+    n = readdir_r(iter->cdir, &(iter->entry),  &result);
 
-    if (result == NULL) {   //** Change dir or we're finished
+    if ((result == NULL) || (n != 0)) {   //** Change dir or we're finished
        iter->n++;
        if (iter->n == DIR_MAX) return(1);   //** Finished
        closedir(iter->cdir);
@@ -2812,17 +2801,17 @@ osd_iter_t *fs_new_trash_iterator(osd_t *d, int trash_type)
       snprintf(dname, sizeof(dname), "%s/deleted_trash", fs->devicename);
    } else {
       log_printf(0, "fs_new_trash_iterator: invalid trash_type=%d\n", trash_type);
-      free(iter);
+      free(iter); free(oi);
       return(NULL);
    }
 
    iter->fs = fs;
    iter->cdir = opendir(dname);
    iter->n = -1;
-  
+
    if (iter->cdir == NULL) {
       log_printf(0, "new_iterator: error with opendir(%s)\n", dname);
-      free(iter);
+      free(iter); free(oi);
       return(NULL);
    }
 
@@ -2835,21 +2824,24 @@ osd_iter_t *fs_new_trash_iterator(osd_t *d, int trash_type)
 
 int fs_trash_iterator_next(osd_iter_t *oi, osd_id_t *id, ibp_time_t *move_time, char *trash_id)
 {
-  osd_fs_iter_t *iter = (osd_fs_iter_t *)oi->arg;
+  osd_fs_iter_t *iter;
   struct dirent *result;
   int finished, n;
   apr_time_t mtime;
 
+  if (oi == NULL) return(-1);  //** Bad iterator
+  iter = (osd_fs_iter_t *)oi->arg;
+
   finished = 0;
   do {
-    readdir_r(iter->cdir, &(iter->entry),  &result);
+    n = readdir_r(iter->cdir, &(iter->entry),  &result);
 
-    if (result == NULL) {   //** Change dir or we're finished
-       return(1);  //** Finished;       
+    if ((result == NULL) || (n != 0)) {   //** We're finished
+       return(1);  //** Finished;
     } else if ((strcmp(result->d_name, ".") != 0) && (strcmp(result->d_name, "..") != 0)) {
        if (trash_id != NULL) strncpy(trash_id, result->d_name, iter->fs->pathlen-1);
        n = sscanf(result->d_name, TT "_" LU, &mtime, id);
-       if (n == 2) { 
+       if (n == 2) {
           *move_time = mtime;
           finished = 1;
        } else {
@@ -2875,13 +2867,13 @@ int fs_umount(osd_t *d)
 {
   osd_fs_t *fs = (osd_fs_t *)(d->private);
 
-log_printf(15, "fs_umount fs=%p rid=%s\n",fs, fs->devicename); 
+log_printf(15, "fs_umount fs=%p rid=%s\n",fs, fs->devicename);
 
   destroy_pigeon_coop(fs->fd_list);
   destroy_pigeon_coop(fs->obj_list);
 
   fs_cache_destroy(fs->cache);
-  
+
   //**NOTE: there is no apr_hash_destroy function:(  so it gets removed when the pool is destroyed
   apr_thread_mutex_destroy(fs->lock);
   apr_thread_mutex_destroy(fs->obj_lock);
@@ -3089,9 +3081,9 @@ osd_t *osd_mount_fs(const char *device, int n_cache, apr_time_t expire_time)
 
    fs->mount_type = 0;
 
-#ifdef _HAS_XFS
-   fs->mount_type = platform_test_xfs_path(device);
-#endif
+//#ifdef _HAS_XFS
+//   fs->mount_type = platform_test_xfs_path(device);
+//#endif
 
    log_printf(10, "osd_fs_mount: %s mount_type=%d\n", fs->devicename, fs->mount_type);
    log_printf(15, "fs_mount fs=%p rid=%s\n",fs, fs->devicename); 

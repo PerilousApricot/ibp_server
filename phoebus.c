@@ -151,8 +151,8 @@ void phoebus_init(void)
 
    phoebus_path_set(global_phoebus, NULL);      
    
-   if (libxsp_init() < 0) {      
-      perror("libxsp_init(): failed");
+   if (liblsl_init() < 0) {      
+      perror("liblsl_init(): failed");
       exit(errno);
    }
    
@@ -166,7 +166,7 @@ void phoebus_init(void)
    } else if (getenv("PHOEBUS_GW") != NULL) {
       phoebus_path_set(global_phoebus, getenv("PHOEBUS_GW"));
       log_printf(10, "phoebus_init: Using the gateway specified in environmental variable PHOEBUS_GW: \"%s\"\n", getenv("PHOEBUS_GW"));
-   }
+   }  
 }
 
 //***************************************************************
