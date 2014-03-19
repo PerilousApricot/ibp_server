@@ -35,10 +35,9 @@ endif(WIN32)
 # get dependancies
 find_package(BerkeleyDB REQUIRED)
 find_package(OpenSSL REQUIRED)
-find_package(Protobufc REQUIRED)
 find_package(APR REQUIRED)
 find_package(APRUtil REQUIRED)
-find_package(PHOEBUS)
+find_package(Phoebus)
 find_package(Unisc)
 
 check_include_file("stdint.h" HAVE_STDINT_H)
@@ -56,20 +55,10 @@ if (PHOEBUS_FOUND)
   set(PHOEBUS_OPT "-D_ENABLE_PHOEBUS")
   OPTION( _ENABLE_PHOEBUS "Enable PHOEBUS support" ON )
   include_directories(${PHOEBUS_INCLUDE_DIR})
-  list(APPEND LIBS ${PHOEBUS_LIBRARIES})
+  list(APPEND LIBS ${PHOEBUS_LIBRARY})
 else (PHOEBUS_FOUND)
   OPTION( _ENABLE_PHOEBUS "Enable PHOEBUS support" OFF )
 endif (PHOEBUS_FOUND)
-
-# Check if we found unis lib c and the set options
-if (UNIS_C_FOUND)
-  set(UNIS_C_OPT "-D_ENABLE_UNIS_C")
-  OPTION( _ENABLE_UNIS_C "Enable PHOEBUS support" ON )
-  include_directories(${UNIS_C_INCLUDE_DIR})
-  list(APPEND LIBS ${UNIS_C_LIBRARY} curl jansson)
-else (UNIS_C_FOUND)
-  OPTION( _ENABLE_UNIS_C "Enable PHOEBUS support" OFF )
-endif (UNIS_C_FOUND)
 
 # Check if we found unis lib c and the set options
 if (UNIS_C_FOUND)
@@ -100,12 +89,6 @@ SET(RESOURCE_OBJS resource.c alloc_history.c cap_timestamp.c random.c osd_fs.c d
 SET(NETWORK_OBJS network.c net_sock.c net_1_ssl.c net_2_ssl.c net_fd.c net_phoebus.c phoebus.c chksum.c )
 set(STRING_OBJS string_token.c append_printf.c iniparse.c)
 
-# /protobuf stuff
-#SET( PROTO_SRC alog.pb-c.c )
-#WRAP_PROTO(PROTO_SRC "alog.proto")
-#ADD_EXECUTABLE(server ${server_SRC} ${PROTO_SRC})
-
-#message("proto src is ${PROTO_SRC}")
 # various executables
 ADD_EXECUTABLE(ibp_server ibp_server.c server_lib.c  global_data.c
    parse_commands.c install_commands.c commands.c
