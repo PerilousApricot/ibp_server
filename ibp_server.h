@@ -25,7 +25,7 @@ Advanced Computing Center for Research and Education
 230 Appleton Place
 Nashville, TN 37203
 http://www.accre.vanderbilt.edu
-*/ 
+*/
 
 #ifndef _IBP_SERVER_H_
 #define _IBP_SERVER_H_
@@ -67,7 +67,7 @@ http://www.accre.vanderbilt.edu
 #define INTERNAL_SEND        100
 
 //*** Internal constant to represent the key is the osd_id
-#define INTERNAL_ID 4  
+#define INTERNAL_ID 4
 
 typedef struct {  //** bind ports
   char *hostname;
@@ -119,8 +119,13 @@ typedef struct {       // Structure containg the overall server config
    int   alog_max_history;     //** How many alog files to keep before dropping them
    int   alog_port;            //** alog host's port to use
    int   return_cap_id;    //** Returns the cap id in the capability if set
+   int   rid_check_interval;  //** DRive check interval
+   int   eject_timeout;   //** How long to wait for RID check failures before ejecting a drive
+   char *rid_log;         //Where to store the running RID changes
    char *password;        //Depot Password for status change commands
    char *default_acl;     //Default command ACLs
+   char *rid_eject_script; //Script to run when ejecting drives that fail a health check
+   char *rid_eject_tmp_path; //Location to create the temporary files for the eject script
 } Server_t;
 
 typedef struct {      //Main config structure
@@ -131,7 +136,7 @@ typedef struct {      //Main config structure
    DB_env_t  *dbenv;     // Container for DB environment
    int force_resource_rebuild; // Force rebuilding of all resources
    int truncate_expiration;    // Force existing allocs duration to be the RID max.  Only used in rebuild!
-   int soft_fail;       // defaults to -1 for all errors. Only used for commands that mey be recoverable 
+   int soft_fail;       // defaults to -1 for all errors. Only used for commands that mey be recoverable
    Resource_list_t *rl; // Searchable list of resources
    command_t command[COMMAND_TABLE_MAX+1];  //** List of commands
 } Config_t;
@@ -149,6 +154,7 @@ typedef struct {     //** Thread data strcuture
 //**************Global control Variables*****************
 extern apr_pool_t *global_pool;
 extern apr_thread_mutex_t *shutdown_lock;
+extern apr_thread_cond_t *shutdown_cond;
 extern int shutdown_now;
 extern Config_t *global_config;
 extern ibp_task_t *global_task;
@@ -162,7 +168,7 @@ void install_commands(inip_file_t *kf);
 //*** functions in commands.c ***
 void generate_command_acl(char *peer_name, int *acl);
 void add_command(int cmd, const char *cmd_keyword, inip_file_t *kf,
-   void (*load_config)(inip_file_t *keyfile), 
+   void (*load_config)(inip_file_t *keyfile),
    void (*init)(void),
    void (*destroy)(void),
    int (*print)(char *buffer, int *used, int nbytes),

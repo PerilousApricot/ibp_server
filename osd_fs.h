@@ -25,7 +25,7 @@ Advanced Computing Center for Research and Education
 230 Appleton Place
 Nashville, TN 37203
 http://www.accre.vanderbilt.edu
-*/ 
+*/
 
 //**************************************************
 //
@@ -64,7 +64,7 @@ http://www.accre.vanderbilt.edu
 
 #define XFS_MOUNT 1
 
-typedef struct { 
+typedef struct {
   osd_id_t id;
   int      block;
 } __attribute__((__packed__)) fs_cache_key_t;
@@ -129,6 +129,7 @@ struct osd_fs_fd_s {
 };
 
 struct osd_fs_object_s {
+  int n_pending;                 //** Pending tasks trying to open the object.  This should only be accessed if holding the fs->obj_lock!!!
   int n_opened;                  //** Number of times the object is opened
   int n_read;                    //** Current number of read operations
   int n_write;                   //** Current number of write operations

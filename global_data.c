@@ -25,12 +25,13 @@ Advanced Computing Center for Research and Education
 230 Appleton Place
 Nashville, TN 37203
 http://www.accre.vanderbilt.edu
-*/ 
+*/
 
 #include "ibp_server.h"
 
 //**************Global control Variables*****************
 apr_thread_mutex_t *shutdown_lock = NULL;
+apr_thread_cond_t *shutdown_cond = NULL;
 apr_pool_t         *global_pool = NULL;
 int shutdown_now;
 Config_t *global_config;
