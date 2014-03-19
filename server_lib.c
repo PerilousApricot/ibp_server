@@ -25,7 +25,7 @@ Advanced Computing Center for Research and Education
 230 Appleton Place
 Nashville, TN 37203
 http://www.accre.vanderbilt.edu
-*/ 
+*/
 
 //*****************************************************************
 //*****************************************************************
@@ -193,7 +193,7 @@ void print_uptime(char *str, int n)
 //    bytes used or -1 if the buffer is too small.
 //*****************************************************************************
 
-int print_config(char *buffer, int *used, int nbytes, Config_t *cfg) 
+int print_config(char *buffer, int *used, int nbytes, Config_t *cfg)
 {
   Server_t *server;
   int i, d, k;
@@ -216,10 +216,10 @@ int print_config(char *buffer, int *used, int nbytes, Config_t *cfg)
 //  append_printf(buffer, used, nbytes, "max_connections = %d\n", server->max_connections);
   append_printf(buffer, used, nbytes, "min_idle = " TT "\n", apr_time_sec(server->min_idle));
   get_net_timeout(server->timeout, &d, &k);
-//log_printf(0, "print_timeout: s=%d ms=%d\n",d, k); 
+//log_printf(0, "print_timeout: s=%d ms=%d\n",d, k);
   d = d * 1000 + k/1000;
   append_printf(buffer, used, nbytes, "max_network_wait_ms = %d\n", d);
-  append_printf(buffer, used, nbytes, "password = %s\n", server->password);  
+  append_printf(buffer, used, nbytes, "password = %s\n", server->password);
   append_printf(buffer, used, nbytes, "stats_size = %d\n", server->stats_size);
   append_printf(buffer, used, nbytes, "lazy_allocate = %d\n", server->lazy_allocate);
   append_printf(buffer, used, nbytes, "big_alloc_enable = %d\n", server->big_alloc_enable);
@@ -392,7 +392,7 @@ int handle_task(ibp_task_t *task)
    int err = 0;
 
    cmd->state = CMD_STATE_CMD;
-   
+
    log_code( apr_time_t tt = apr_time_now(); )
    log_printf(10, "handle_task: ns=%d ***START*** tid=" LU " Got a connection at " TT "\n", ns->id, task->tid, apr_time_now());
 
@@ -405,7 +405,7 @@ int handle_task(ibp_task_t *task)
       err = -1;
    } else {
       mycmd = &(global_config->command[cmd->command]);
-      if (mycmd->execute != NULL) err = mycmd->execute(task);    
+      if (mycmd->execute != NULL) err = mycmd->execute(task);
    }
 
    log_printf(10, "handle_task: tid=" LU " After handle_command " TT " ns=%d\n", task->tid, apr_time_now(),task->ns->id);
@@ -493,7 +493,7 @@ void *worker_task(apr_thread_t *ath, void *arg)
           dt_handle = end_time - start_handle;
           dt_total = end_time - start_read;
 
-          log_printf(10, "worker_task: ns=%d myid=%d command=%d start_time=" TT " end_time=" TT " dt_read=" TT " dt_handle=" TT " dt_total=" TT "\n", 
+          log_printf(10, "worker_task: ns=%d myid=%d command=%d start_time=" TT " end_time=" TT " dt_read=" TT " dt_handle=" TT " dt_total=" TT "\n",
               th->ns->id, myid, task.cmd.command, start_read, end_time, dt_read, dt_handle, dt_total);
           start_read = apr_time_now();
       } else if (status == -1) {
@@ -529,7 +529,7 @@ void *worker_task(apr_thread_t *ath, void *arg)
 
 
 //*****************************************************************
-//  currently_running_tasks - Returns the number of tasks currently 
+//  currently_running_tasks - Returns the number of tasks currently
 //         running
 //*****************************************************************
 
@@ -541,7 +541,7 @@ int currently_running_tasks()
   n = taskmgr.curr_threads;
   apr_thread_mutex_unlock(taskmgr.lock);
 
-  return(n);  
+  return(n);
 }
 
 //*****************************************************************
@@ -573,7 +573,7 @@ int to_many_connections()
   }
   apr_thread_mutex_unlock(taskmgr.lock);
 
-  return(n);  
+  return(n);
 }
 
 //*****************************************************************
@@ -586,7 +586,7 @@ void spawn_new_task(NetStream_t *ns, int reject_connection)
 
   t->ns = ns;
 
-  apr_pool_create(&(t->pool), NULL); 
+  apr_pool_create(&(t->pool), NULL);
 
   t->attr = NULL;
 
@@ -599,9 +599,9 @@ void spawn_new_task(NetStream_t *ns, int reject_connection)
 
   //** Increment the task count 1st
   if (reject_connection == 0) {
-     apr_thread_mutex_lock(taskmgr.lock);  
+     apr_thread_mutex_lock(taskmgr.lock);
      taskmgr.curr_threads++;
-     apr_thread_mutex_unlock(taskmgr.lock);  
+     apr_thread_mutex_unlock(taskmgr.lock);
   }
 
   //** then launch the thread
@@ -618,9 +618,9 @@ void release_task(Thread_task_t *t)
 
   taskmgr.curr_threads--;
   push(taskmgr.completed, t);
-  
+
   apr_thread_mutex_unlock(taskmgr.lock);
-  
+
 }
 
 //*****************************************************************
@@ -641,7 +641,7 @@ int request_task_close()
         result = 1;
      } else {
         taskmgr.request_thread = 0;
-     }         
+     }
   }
 
   if (result == 1) apr_thread_cond_signal(taskmgr.cond);
@@ -671,7 +671,7 @@ void join_completed()
      apr_pool_destroy(t->pool);
      free(t);
   }
-  
+
   apr_thread_mutex_unlock(taskmgr.lock);
 }
 
@@ -693,7 +693,7 @@ void signal_taskmgr()
 void wait_for_free_task()
 {
   apr_thread_mutex_lock(taskmgr.lock);
- 
+
   if (taskmgr.curr_threads >= taskmgr.max_threads) {
      taskmgr.request_thread = 1;
      log_printf(15, "wait_for_free_task: Before cond_wait time=" TT "\n", apr_time_now());
@@ -723,8 +723,8 @@ void reject_close(NetStream_t *ns)
   dt = r;
   dt = dt / 1024.0;  //** Up to 0.25 secs
 
-  apr_thread_mutex_lock(taskmgr.lock); 
-  
+  apr_thread_mutex_lock(taskmgr.lock);
+
   dt = dt + global_config->server.backoff_scale * taskmgr.reject_count;
   if (dt > global_config->server.backoff_max) {
      dt = global_config->server.backoff_max;
@@ -755,7 +755,7 @@ void reject_task(NetStream_t *ns, int destroy_ns)
   dt = dt / 256.0;
 
 
-  apr_thread_mutex_lock(taskmgr.lock); 
+  apr_thread_mutex_lock(taskmgr.lock);
   if (taskmgr.curr_threads >= taskmgr.max_threads) {
      taskmgr.request_thread++;
   }
@@ -786,12 +786,12 @@ void wait_all_tasks()
 {
   apr_time_t t;
   apr_thread_mutex_lock(taskmgr.lock);
- 
+
   while (taskmgr.curr_threads > 0) {
     t = apr_time_make(1, 0);    //wait for at least a second
     taskmgr.request_thread = 1;
     apr_thread_cond_timedwait(taskmgr.cond, taskmgr.lock, t);
-  }   
+  }
 
   apr_thread_mutex_unlock(taskmgr.lock);
 }
@@ -811,7 +811,7 @@ void init_tasks()
 
   apr_thread_mutex_create(&task_count_lock, APR_THREAD_MUTEX_DEFAULT, global_pool);
   apr_thread_mutex_create(&(taskmgr.lock), APR_THREAD_MUTEX_DEFAULT, global_pool);
-  apr_thread_cond_create(&(taskmgr.cond), global_pool);  
+  apr_thread_cond_create(&(taskmgr.cond), global_pool);
 }
 
 //*****************************************************************
